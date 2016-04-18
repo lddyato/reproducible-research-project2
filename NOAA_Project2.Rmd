@@ -1,0 +1,335 @@
+---
+title: 'Project 2: NOAA Storm Database Analysis'
+author: "Danielle D"
+date: "April 16, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, message=FALSE, warning=FALSE)
+```
+
+
+
+
+# Synopsis
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. The events in the database start in the year 1950 and end in November 2011.
+
+This report looks at two questions:
+
+1. Across the United States, which types of events are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+Analysis shows that tornados caused the most fatalities (5633) and injuries (91346) in the US and that floods have had the greatest economical impact in the US (around 150 billion USD).
+
+
+# Data Processing
+
+###Download the files if it does not exist in the current wd
+
+
+```{r}
+    if (!file.exists("repdata-data-StormData.csv.bz2")) {
+    download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", 
+    "repdata-data-StormData.csv.bz2")
+}
+```
+
+###Read the file
+
+```{r Read the csv file into weather}
+    weather <- read.csv(bzfile("repdata-data-StormData.csv.bz2"))
+```
+
+###Get a look at weather to identify the desired event types
+
+```{r Look at weather}
+    str(weather)
+```
+
+###Pull out only the columns that are useful for the purpose of this report and can assist in answering our two questions below. 
+
+```{r Get the columns we need}
+    weatherSubset <- weather[, c("BGN_DATE", "EVTYPE", "FATALITIES", "INJURIES", "PROPDMG",          "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+```
+
+###Check out our subsetting of data
+
+```{r Look at the subset of weather}
+    head(weatherSubset)
+```
+
+
+# Results
+
+###Question 1: Across the United States, which type of events are most harmful with respect to populational health?
+
+First let's define what will go into the definition of "health". Of the event types provided we will include the following in our definition of "health": Fatalities and Injuries
+
+
+```{r Create a subset of weather for health score}
+    healthScore <- subset(weatherSubset, FATALITIES!=0 | INJURIES!=0)
+    summary(healthScore)
+```
+
+
+###Now we'll find the total fatalties and injuries by type of weather event
+
+```{r Find total fatalities and injuries} 
+      weatherFatal <- aggregate(FATALITIES ~ EVTYPE, data=weatherSubset, FUN=sum)
+      weatherInjury <- aggregate(INJURIES ~ EVTYPE, data=weatherSubset, FUN=sum)
+      weatherHealth <- aggregate(cbind(INJURIES, FATALITIES) ~ EVTYPE, data = weatherSubset, FUN = sum)
+```
+
+###That's a lot of event types. Let's pair down event types to only the top 10. 
+
+```{r}
+library(dplyr)
+weatherFatal1 <- weatherFatal %>%
+  filter(FATALITIES > 0 ) %>%
+  group_by(EVTYPE) %>%
+  summarise (FATALITIES = sum(FATALITIES, na.rm = TRUE)) %>%
+  arrange(desc(FATALITIES)) %>%
+  head(10)
+```
+
+```{r}
+library(dplyr)
+weatherInjury1 <- weatherInjury %>%
+  filter(INJURIES > 0 ) %>%
+  group_by(EVTYPE) %>%
+  summarise (INJURIES = sum(INJURIES, na.rm = TRUE)) %>%
+  arrange(desc(INJURIES)) %>%
+  head(10)
+
+
+```  
+
+
+
+###Tornados cause the most fatalties when calculating using the provided NOAA data.
+
+```{r}
+library(knitr,quietly=T)
+  kable(head(arrange(weatherFatal1,desc(FATALITIES)), n=10),format="markdown")
+
+```
+
+###Tornados still top the list for injuries but we see a few unique entries versus the fatalities list.
+
+```{r}
+library(knitr,quietly=T)
+kable(head(arrange(weatherInjury1,desc(INJURIES)), n=10),format="markdown")
+
+```
+
+
+# Fatalities by Top 10 Weather Events
+
+```{r Injuries and Fatalities by event type}
+   library(ggplot2)
+ggplot(weatherFatal1, aes(x = EVTYPE, y = FATALITIES, fill = EVTYPE, scale_fill_brewer(palette = "Set2"))) +
+geom_bar(stat = "identity") +
+  labs(title = "Fatalities by Weather Event (Top 10)", x = "Weather Event", y = "Number of Fatalities") +
+  theme_gray() +
+  
+  theme(axis.text=element_text(color="black",size=8), legend.position = "none") +
+  theme(axis.text.x=element_text(angle = 90, hjust = 1)) +
+  theme(axis.title.x=element_text(color="blue", size=8), ## x title blue
+  axis.title.y=element_text(color="blue", size=8), ## y title blue
+  plot.title=element_text(color="blue",size=10)) ##set title blue and 12pt
+  
+  #ggsave(file = 'health.png')
+```
+
+```{r echo = FALSE}  
+#   library(ggplot2)
+# ggplot(weatherInjury1, aes(x = EVTYPE, y = INJURIES, fill = EVTYPE, scale_fill_brewer(palette = "Set2"))) +
+# geom_bar(stat = "identity") +
+#   labs(title = "Injuries by Weather Event (Top 10)", x = "Weather Event", y = "Number of Injuries") +
+#   theme_gray() +
+#   
+#   theme(axis.text=element_text(color="black",size=8), legend.position = "none") +
+#   theme(axis.text.x=element_text(angle = 90, hjust = 1)) +
+#   theme(axis.title.x=element_text(color="blue", size=8), ## x title blue
+#   axis.title.y=element_text(color="blue", size=8), ## y title blue
+#   plot.title=element_text(color="blue",size=10)) ##set title blue and 12pt
+#   
+# ggsave(file = 'injury.png')
+```
+
+# Question 2: Across the United States, which types of events have the greatest economic consequences?
+
+### In order to address this issue we need to take a look at our data to see what gives us an indication of economic consequences. We have four columns that will give us insight into the economic impact of different event types. 
+
+1. PROPDMG - Contains the amount rounded to three signifigant digits
+2. PROPDMGEXP - Alpha character to signify the magnitude (B = Billion, K = Thousands, M = Million)
+3. CROPDMG - Contains the amount rounded to three signifigant digits
+4. CROPDMGEXP - Alpha character to signify the magnitude (B = Billion, K = Thousands, M = Million)
+
+
+[REFERENCE: Propery and Crop Damage Calculations from NOAA](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+
+###Let's take a look at the subset of weather data to see whta's lurking in the PROPDMGEXP and CROPDMGEXP columns.
+
+```{r}
+levels(weatherSubset$PROPDMGEXP)
+```
+
+```{r}
+
+levels(weatherSubset$CROPDMGEXP)
+```
+
+
+###We definitly have some values that need to be cleaned up in the PROPDMGEXP and CROPDMGEXP areas. Below we will clean up those values before we proceed with the damage calculations. Starting with CROPDMGEXP.
+
+```{r}
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == ""] <- 1
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == "?"] <- 1
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == "0"] <- 1
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == "2"] <- 1
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == "k"] <- 1000
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == "K"] <- 1000
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == "m"] <- 1e+06
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == "M"] <- 1e+06
+weatherSubset$CROPEXP[weatherSubset$CROPDMGEXP == "B"] <- 1e+09
+```
+
+
+###Now a little cut and past magic and let's do the same thing with PROPDMGEXP. Here all values that were invalid according to the NOAA documentation were coverted to '1'.
+
+```{r}
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == ""] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "+"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "-"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "?"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "0"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "1"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "2"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "h"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "H"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "3"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "K"] <- 1000
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "4"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "5"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "6"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "m"] <- 1e+06
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "M"] <- 1e+06
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "7"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "8"] <- 1
+weatherSubset$PROPEXP[weatherSubset$PROPDMGEXP == "B"] <- 1e+09
+```
+
+
+###Now let's total up the damage for each instance and create a new column for those values. 
+
+```{r}
+weatherSubset$PropVal <- weatherSubset$PROPDMG * weatherSubset$PROPEXP
+
+weatherSubset$CropVal <- weatherSubset$CROPDMG * weatherSubset$CROPEXP
+```
+
+###Now we are going to find the Top 10 in each area of economic impact. 
+
+```{r}
+weatherProp <- weatherSubset %>%
+  filter(PropVal > 0 ) %>%
+  group_by(EVTYPE) %>%
+  summarise (PropVal = sum(PropVal, na.rm = TRUE)) %>%
+  arrange(desc(PropVal)) %>%
+  head(10)
+
+
+```
+
+
+
+```{r}
+weatherCrop <- weatherSubset %>%
+  filter(CropVal > 0 ) %>%
+  group_by(EVTYPE) %>%
+  summarise (CropVal = sum(CropVal, na.rm = TRUE)) %>%
+  arrange(desc(CropVal)) %>%
+  head(10)
+
+```
+
+
+
+###Droughts and floods have the largest economic impact on crops. Not surprising. Plants do need water to survive - not too much and not too little. 
+
+
+```{r}
+library(knitr,quietly=T)
+  kable(head(arrange(weatherCrop,desc(CropVal)), n=10),format="markdown")
+
+```
+
+###In terms of property damage floods top the list followed by hurricanes and tornados. 
+
+
+```{r}
+library(knitr,quietly=T)
+  kable(head(arrange(weatherProp,desc(PropVal)), n=10),format="markdown")
+
+```
+
+
+###We'll add the values for our total property damage and total crop damage together and then we will graph that final value to determine which events make up our Top 10 greatest economic losses. 
+
+
+```{r}
+weatherSubset$TotalLoss <- weatherSubset$PropVal + weatherSubset$CropVal
+
+```
+
+
+```{r}
+weatherTotalLoss <- weatherSubset %>%
+  filter(TotalLoss > 1 ) %>%
+  group_by(EVTYPE) %>%
+  summarise (TotalLoss = sum(TotalLoss, na.rm = TRUE)) %>%
+  arrange(desc(TotalLoss)) %>%
+  head(10)
+
+```
+
+
+```{r}
+library(knitr,quietly=T)
+  kable(head(arrange(weatherTotalLoss,desc(TotalLoss)), n=10),format="markdown")
+
+```
+
+
+
+```{r}
+library(ggplot2)
+ggplot(weatherTotalLoss, aes(x = EVTYPE, y = TotalLoss, fill = EVTYPE, scale_fill_brewer(palette = "Set2"))) +
+  scale_y_continuous(labels = scales::dollar) +
+geom_bar(stat = "identity") +
+  labs(title = "Economic Loss by Weather Events (Top 10)", x = "Weather Event", y = "USD") +
+  theme_gray() +
+  
+  theme(axis.text=element_text(color="black",size=9), legend.position = "none") +
+  theme(axis.text.x=element_text(angle = 75, hjust = 1)) +
+  theme(axis.title.x=element_text(color="blue", size=10), ## x title blue
+  axis.title.y=element_text(color="blue", size=10), ## y title blue
+  plot.title=element_text(color="blue",size=10)) ##set title blue and 12pt
+  
+  ggsave(file = 'economic.png', width = 18, height = 18, units = "cm")
+
+
+```
+
+
+#Conclusion
+
+###Tornados top the list in terms of health impact according to our data. Floods cause the greatest econonmic damage. 
+
+
+
+
